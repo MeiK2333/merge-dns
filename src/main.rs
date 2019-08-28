@@ -1,48 +1,24 @@
-use std::net::Ipv4Addr;
-use std::str::FromStr;
+use std::env;
+use std::fs;
 
-use serde_json::{Result, Value};
-use trust_dns::client::{Client, SyncClient};
-use trust_dns::udp::UdpClientConnection;
-use trust_dns::op::DnsResponse;
-use trust_dns::rr::{DNSClass, Name, RData, Record, RecordType};
+use serde_json::Value;
 
 fn main() {
-    let config = r#"
-    [
-        {
-            "rule": "*.youlocal.com",
-            "dns": "10.2.1.10"
-        },
-        {
-            "rule": "*",
-            "dns": "8.8.8.8"
-        }
-    ]
-    "#;
-    let config: Value = serde_json::from_str(config).unwrap();
+    let args: Vec<String> = env::args().collect();
+    let config = fs::read_to_string(&args[1]).expect("请选择正确的配置文件");
+    let config: Value = serde_json::from_str(&config).expect("配置文件解析失败");
+
     if let Value::Array(conf) = config {
         for i in conf {
-            println!("{}", i["rule"]);
+            print!("{}, ", i["dns"]);
+            if let Value::Array(rule) = &i["rule"] {
+                for j in rule {
+                    print!("{}, ", j);
+                }
+            }
+            println!("");
         }
     } else {
         panic!("parse config failure!");
     }
-
-/*
-    let address = "8.8.8.8:53".parse().unwrap();
-    let conn = UdpClientConnection::new(address).unwrap();
-    let client = SyncClient::new(conn);
-
-    let name = Name::from_str("www.example.com.").unwrap();
-
-    let response: DnsResponse = client.query(&name, DNSClass::IN, RecordType::A).unwrap();
-
-    let answers: &[Record] = response.answers();
-    if let &RData::A(ref ip) = answers[0].rdata() {
-        assert_eq!(*ip, Ipv4Addr::new(93, 184, 216, 34))
-    } else {
-        assert!(false, "unexpected result")
-    }
-*/
 }
