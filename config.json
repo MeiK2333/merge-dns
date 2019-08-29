@@ -1,10 +1,10 @@
 [
     {
-        "rule": ["*.youlocal.com", "*.domain.com"],
-        "dns": "10.2.1.10"
+        "rules": [".domain.com", ".domain1.com"],
+        "dns": "10.2.1.10:53"
     },
     {
-        "rule": ["*"],
-        "dns": "8.8.8.8"
+        "rules": [""],
+        "dns": "8.8.8.8:53"
     }
 ]
