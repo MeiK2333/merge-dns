@@ -8,9 +8,9 @@ use serde_json::Value;
 use regex::Regex;
 
 use trust_dns::client::{Client, SyncClient};
-use trust_dns::udp::UdpClientConnection;
 use trust_dns::op::DnsResponse;
 use trust_dns::rr::{DNSClass, Name, RData, Record, RecordType};
+use trust_dns::udp::UdpClientConnection;
 
 #[derive(Debug)]
 struct Config {
@@ -36,8 +36,8 @@ fn main() {
                                 dns: dns.to_string(),
                                 re: Regex::new(&rule.to_string()).unwrap(),
                             });
-                        },
-                        _ => {},
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -52,10 +52,12 @@ fn main() {
             let result = config.re.is_match(&domain);
             if result {
                 println!("使用 {} 进行查询", config.dns);
-                let conn = UdpClientConnection::new(config.dns.to_string().parse().unwrap()).unwrap();
+                let conn =
+                    UdpClientConnection::new(config.dns.to_string().parse().unwrap()).unwrap();
                 let client = SyncClient::new(conn);
                 let name = Name::from_str(&domain.to_string()).unwrap();
-                let response: DnsResponse = client.query(&name, DNSClass::IN, RecordType::A).unwrap();
+                let response: DnsResponse =
+                    client.query(&name, DNSClass::IN, RecordType::A).unwrap();
                 let answers: &[Record] = response.answers();
                 if answers.len() > 0 {
                     for ans in answers.iter() {
