@@ -1,7 +1,9 @@
 mod client;
 mod config;
+mod server;
+mod rr;
 
 fn main() {
     let configs = config::Config::load();
-    client::client_handle(configs);
+    let _ = server::server(configs);
 }

@@ -8,6 +8,7 @@ use trust_dns::op::DnsResponse;
 use trust_dns::rr::{DNSClass, Name, RData, Record, RecordType};
 use trust_dns::udp::UdpClientConnection;
 
+#[warn(dead_code)]
 pub fn client_handle(configs: Vec<config::Config>) {
     let stdin = io::stdin();
     println!("请输入站点名：");
