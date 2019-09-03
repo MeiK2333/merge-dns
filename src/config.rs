@@ -51,4 +51,13 @@ impl Config {
         }
         configs
     }
+
+    pub fn filter_rule<'a>(configs: &'a Vec<Config>, name: &str) -> Result<&'a Config, &'a str> {
+        for config in configs {
+            if config.re.is_match(name) {
+                return Ok(config);
+            }
+        }
+        Err("rule not found!")
+    }
 }

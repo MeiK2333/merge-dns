@@ -5,6 +5,6 @@ authors = ["MeiK <meik2333@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-trust-dns = "*"
 serde_json = "1.0"
 regex = "1"
+dns-parser = "0.8.0"
