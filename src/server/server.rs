@@ -3,13 +3,12 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 
 use trust_dns::client::{Client, SyncClient};
 use trust_dns::udp::UdpClientConnection;
-use trust_dns::rr::{DNSClass, RecordType};
 use trust_dns::proto::op::message::Message;
 
 pub fn server(configs: Vec<Config>) {
     let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 53));
     let socket = UdpSocket::bind(&addr).unwrap();
-    let mut buf = [0; 4096];
+    let mut buf = [0; 512];
     loop {
         let (_amt, src) = match socket.recv_from(&mut buf) {
             Ok(a) => a,
@@ -35,7 +34,7 @@ pub fn server(configs: Vec<Config>) {
     }
 }
 
-fn dns_search(configs: &Vec<Config>, buf: &[u8]) -> Result<[u8; 4096], String> {
+fn dns_search(configs: &Vec<Config>, buf: &[u8]) -> Result<Vec<u8>, String> {
     let message = match Message::from_vec(&buf) {
         Ok(m) => m,
         Err(e) => return Err(e.to_string())
@@ -50,13 +49,7 @@ fn dns_search(configs: &Vec<Config>, buf: &[u8]) -> Result<[u8; 4096], String> {
         Err(e) => return Err(e.to_string())
     };
 
-    let mut v: [u8; 4096] = [0; 4096];
-    let mut cnt = 0;
-    for i in resp.iter() {
-        v[cnt] = *i;
-        cnt += 1;
-    }
-    Ok(v)
+    Ok(resp)
 }
 
 fn do_search(addr: &str, message: &Message) -> Result<Message, String> {
@@ -69,11 +62,15 @@ fn do_search(addr: &str, message: &Message) -> Result<Message, String> {
         Err(e) => return Err(e.to_string())
     };
     let client = SyncClient::new(conn);
-    let name = message.queries()[0].name();
 
-    // TODO: 支持更多请求方式
     // TODO: 支持 DoT 和 DoH
-    let response = match client.query(name, DNSClass::IN, RecordType::A) {
+    // 虽然格式允许一个 DNS 查询包含多个 question ，但在语义上来说，这样是有问题的
+    // 因此，对于一个 DNS 查询来说，其第一个 question 就是唯一的一个 question
+    // https://stackoverflow.com/questions/4082081/requesting-a-and-aaaa-records-in-single-dns-query/4083071#4083071
+    let question = &message.queries()[0];
+    let name = question.name();
+    println!("dns search: name {}, dns server: {}", name, address);
+    let response = match client.query(name, question.query_class(), question.query_type()) {
         Ok(r) => r,
         Err(e) => return Err(e.to_string())
     };
