@@ -3,6 +3,7 @@ use std::env;
 use std::fs;
 
 use regex::Regex;
+use log::{info};
 
 #[derive(Debug)]
 pub struct Config {
@@ -15,6 +16,7 @@ impl Config {
     pub fn load() -> Vec<Config> {
         let args: Vec<String> = env::args().collect();
         let config = if args.len() <= 1 {
+            info!("Profile not provided, default configuration");
             String::from(
                 r#"
 [
@@ -26,6 +28,7 @@ impl Config {
 "#,
             )
         } else {
+            info!("load config on `{}`", &args[1]);
             fs::read_to_string(&args[1]).expect("请选择正确的配置文件")
         };
         let config: Value = serde_json::from_str(&config).expect("配置文件解析失败");

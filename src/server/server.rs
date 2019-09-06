@@ -5,6 +5,8 @@ use trust_dns::client::{Client, SyncClient};
 use trust_dns::udp::UdpClientConnection;
 use trust_dns::proto::op::message::Message;
 
+use log::{warn, info};
+
 pub fn server(configs: Vec<Config>) {
     let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 53));
     let socket = UdpSocket::bind(&addr).unwrap();
@@ -13,7 +15,7 @@ pub fn server(configs: Vec<Config>) {
         let (_amt, src) = match socket.recv_from(&mut buf) {
             Ok(a) => a,
             Err(e) => {
-                eprintln!("socket recv_from error: {}", e.to_string());
+                warn!("socket recv_from error: {}", e.to_string());
                 continue;
             }
         };
@@ -22,14 +24,14 @@ pub fn server(configs: Vec<Config>) {
         let resp_buf = match dns_search(&configs, &buf) {
             Ok(b) => b,
             Err(e) => {
-                eprintln!("dns_search error: {}", e);
+                warn!("dns_search error: {}", e);
                 continue;
             }
         };
         // 将第三方的请求结果返回给请求者
         let _ = match socket.send_to(&resp_buf, src) {
-            Ok(_) => println!("dns search success: src: {}", src),
-            Err(e) => eprintln!("socket send_to error: {}", e.to_string())
+            Ok(_) => info!("dns search success: src: {}", src),
+            Err(e) => warn!("socket send_to error: {}", e.to_string())
         };
     }
 }
@@ -69,7 +71,7 @@ fn do_search(addr: &str, message: &Message) -> Result<Message, String> {
     // https://stackoverflow.com/questions/4082081/requesting-a-and-aaaa-records-in-single-dns-query/4083071#4083071
     let question = &message.queries()[0];
     let name = question.name();
-    println!("dns search: name {}, dns server: {}", name, address);
+    info!("dns search: name {}, dns server: {}", name, address);
     let response = match client.query(name, question.query_class(), question.query_type()) {
         Ok(r) => r,
         Err(e) => return Err(e.to_string())

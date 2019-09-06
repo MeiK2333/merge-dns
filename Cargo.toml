@@ -8,3 +8,5 @@ edition = "2018"
 serde_json = "1.0"
 regex = "1"
 trust-dns = { version = "*" }
+log = "0.4"
+env_logger = "0.6"
