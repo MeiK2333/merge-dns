@@ -4,8 +4,9 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use trust_dns::client::{Client, SyncClient};
 use trust_dns::udp::UdpClientConnection;
 use trust_dns::proto::op::message::Message;
+use trust_dns::proto::op::query::Query;
 
-use log::{warn, info};
+use log::{warn, info, debug};
 
 pub fn server(configs: Vec<Config>) {
     let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 53));
@@ -21,7 +22,7 @@ pub fn server(configs: Vec<Config>) {
         };
 
         // 向第三方 DNS 服务器发送查询请求
-        let resp_buf = match dns_search(&configs, &buf) {
+        let resp_buf = match dns_search(&src, &configs, &buf) {
             Ok(b) => b,
             Err(e) => {
                 warn!("dns_search error: {}", e);
@@ -30,49 +31,50 @@ pub fn server(configs: Vec<Config>) {
         };
         // 将第三方的请求结果返回给请求者
         let _ = match socket.send_to(&resp_buf, src) {
-            Ok(_) => info!("dns search success: src: {}", src),
+            Ok(_) => debug!("dns message send success: src: {}", src),
             Err(e) => warn!("socket send_to error: {}", e.to_string())
         };
     }
 }
 
-fn dns_search(configs: &Vec<Config>, buf: &[u8]) -> Result<Vec<u8>, String> {
+fn dns_search(source_address: &SocketAddr, configs: &Vec<Config>, buf: &[u8]) -> Result<Vec<u8>, String> {
     let message = match Message::from_vec(&buf) {
         Ok(m) => m,
         Err(e) => return Err(e.to_string())
     };
-    // 根据规则获取查询 DNS 服务器地址
-    let dns_addr = next_addr(&configs, &message)?;
 
-    let mut resp_message = do_search(dns_addr, &message)?;
+    // https://stackoverflow.com/questions/4082081/requesting-a-and-aaaa-records-in-single-dns-query/4083071
+    if message.queries().len() != 1 {
+        return Err("dns query format error".to_string());
+    }
+    let query = &message.queries()[0];
+    // 根据规则获取查询 DNS 服务器地址
+    let dns_server_address = remote_dns_server_address(&configs, &query)?;
+
+    let mut resp_message = do_search(query, dns_server_address)?;
     resp_message.set_id(message.id());
     let resp = match resp_message.to_vec() {
         Ok(v) => v,
         Err(e) => return Err(e.to_string())
     };
 
+    // 111.111.111.111:11111.len() =
+    info!("source: {}\tdns server: {}\tname: {}", source_address, dns_server_address, query.name());
     Ok(resp)
 }
 
-fn do_search(addr: &str, message: &Message) -> Result<Message, String> {
-    let address = match addr.parse() {
+fn do_search(query: &Query, dns_server_address: &str) -> Result<Message, String> {
+    let dns_server_address = match dns_server_address.parse() {
         Ok(a) => a,
         Err(_) => return Err("addr parse error".to_string())
     };
-    let conn = match UdpClientConnection::new(address) {
+    let conn = match UdpClientConnection::new(dns_server_address) {
         Ok(c) => c,
         Err(e) => return Err(e.to_string())
     };
     let client = SyncClient::new(conn);
 
-    // TODO: 支持 DoT 和 DoH
-    // 虽然格式允许一个 DNS 查询包含多个 question ，但在语义上来说，这样是有问题的
-    // 因此，对于一个 DNS 查询来说，其第一个 question 就是唯一的一个 question
-    // https://stackoverflow.com/questions/4082081/requesting-a-and-aaaa-records-in-single-dns-query/4083071#4083071
-    let question = &message.queries()[0];
-    let name = question.name();
-    info!("dns search: name {}, dns server: {}", name, address);
-    let response = match client.query(name, question.query_class(), question.query_type()) {
+    let response = match client.query(query.name(), query.query_class(), query.query_type()) {
         Ok(r) => r,
         Err(e) => return Err(e.to_string())
     };
@@ -82,10 +84,7 @@ fn do_search(addr: &str, message: &Message) -> Result<Message, String> {
     Err("Response no message".to_string())
 }
 
-fn next_addr<'a>(configs: &'a Vec<Config>, message: &Message) -> Result<&'a str, &'a str> {
-    for question in message.queries().iter() {
-        let config = Config::filter_rule(&configs, &question.name().to_string())?;
-        return Ok(&config.dns);
-    }
-    Err("dns query must include question!")
+fn remote_dns_server_address<'a>(configs: &'a Vec<Config>, query: &Query) -> Result<&'a str, &'a str> {
+    let config = Config::filter_rule(&configs, &query.name().to_string())?;
+    return Ok(&config.dns);
 }
