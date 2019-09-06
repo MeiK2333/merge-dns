@@ -58,7 +58,6 @@ fn dns_search(source_address: &SocketAddr, configs: &Vec<Config>, buf: &[u8]) ->
         Err(e) => return Err(e.to_string())
     };
 
-    // 111.111.111.111:11111.len() =
     info!("source: {}\tdns server: {}\tname: {}", source_address, dns_server_address, query.name());
     Ok(resp)
 }
