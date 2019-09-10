@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 
 use regex::Regex;
-use log::{info};
+use log::info;
 
 #[derive(Debug)]
 pub struct Config {
@@ -12,8 +12,13 @@ pub struct Config {
     pub re: Regex,
 }
 
-impl Config {
-    pub fn load() -> Vec<Config> {
+#[derive(Debug)]
+pub struct Configs {
+    configs: Vec<Config>,
+}
+
+impl Configs {
+    pub fn load() -> Configs {
         let args: Vec<String> = env::args().collect();
         let config = if args.len() <= 1 {
             info!("Profile not provided, default configuration");
@@ -28,11 +33,13 @@ impl Config {
 "#,
             )
         } else {
-            info!("load config on `{}`", &args[1]);
+            info!("load CONFIG on `{}`", &args[1]);
             fs::read_to_string(&args[1]).expect("请选择正确的配置文件")
         };
         let config: Value = serde_json::from_str(&config).expect("配置文件解析失败");
-        let mut configs = Vec::new();
+        let mut configs = Configs {
+            configs: Vec::new()
+        };
 
         if let Value::Array(conf) = config {
             for i in conf {
@@ -40,7 +47,7 @@ impl Config {
                     for j in rules {
                         match (&i["dns"], &j) {
                             (Value::String(dns), Value::String(rule)) => {
-                                configs.push(Config {
+                                configs.configs.push(Config {
                                     rule: rule.to_string(),
                                     dns: dns.to_string(),
                                     re: Regex::new(&rule.to_string()).unwrap(),
@@ -55,8 +62,8 @@ impl Config {
         configs
     }
 
-    pub fn filter_rule<'a>(configs: &'a Vec<Config>, name: &str) -> Result<&'a Config, &'a str> {
-        for config in configs {
+    pub fn filter_rule(self, name: &str) -> Result<Config, &str> {
+        for config in self.configs {
             if config.re.is_match(name) {
                 return Ok(config);
             }

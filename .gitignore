@@ -11,4 +11,4 @@ Cargo.lock
 
 .idea
 
-config.local.json
+CONFIG.local.json

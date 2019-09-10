@@ -10,3 +10,8 @@ regex = "1"
 trust-dns = { version = "*" }
 log = "0.4"
 env_logger = "0.6"
+trust-dns-https = "*"
+trust-dns-resolver = { version = "*", features = ["dns-over-rustls"] }
+tokio = "*"
+futures = "*"
+lazy_static = "1.4.0"

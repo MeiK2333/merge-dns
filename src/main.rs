@@ -1,15 +1,23 @@
+#[macro_use]
+extern crate lazy_static;
+
 mod config;
 mod server;
 
 use std::process;
 
 use env_logger;
-use log::{info};
+use log::info;
+
+
+lazy_static! {
+    pub static ref CONFIGS: &'static config::Configs = &config::Configs::load();
+}
+
 
 fn main() {
     env_logger::init();
     info!("server start, pid: {}", process::id());
-    let configs = config::Config::load();
-    server::server::server(configs);
+    server::server::server();
     info!("server ended");
 }

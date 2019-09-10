@@ -1,43 +1,70 @@
-use crate::config::Config;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
+use crate::config::{Configs, Config};
+use crate::CONFIGS;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use trust_dns::client::{Client, SyncClient};
 use trust_dns::udp::UdpClientConnection;
 use trust_dns::proto::op::message::Message;
 use trust_dns::proto::op::query::Query;
+use trust_dns::proto::rr::RecordType;
+use std::net::*;
+use trust_dns_resolver::Resolver;
+use trust_dns_resolver::config::*;
+use tokio::net::{UdpFramed, UdpSocket};
+use tokio::codec::BytesCodec;
+use futures::sink::Sink;
 
 use log::{warn, info, debug};
+use tokio::prelude::*;
+use tokio;
 
-pub fn server(configs: Vec<Config>) {
-    let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 53));
+pub fn server() {
+    let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 54));
     let socket = UdpSocket::bind(&addr).unwrap();
-    let mut buf = [0; 512];
-    loop {
-        let (_amt, src) = match socket.recv_from(&mut buf) {
-            Ok(a) => a,
-            Err(e) => {
-                warn!("socket recv_from error: {}", e.to_string());
-                continue;
-            }
-        };
+    let (sink, stream) = UdpFramed::new(socket, BytesCodec::new()).split();
 
-        // 向第三方 DNS 服务器发送查询请求
-        let resp_buf = match dns_search(&src, &configs, &buf) {
+    let stream = stream.map(|(msg, addr)| {
+        let resp_buf = match dns_search(&addr, &msg) {
             Ok(b) => b,
             Err(e) => {
                 warn!("dns_search error: {}", e);
-                continue;
+                return ("PONG".into(), addr);
             }
         };
-        // 将第三方的请求结果返回给请求者
-        let _ = match socket.send_to(&resp_buf, src) {
-            Ok(_) => debug!("dns message send success: src: {}", src),
-            Err(e) => warn!("socket send_to error: {}", e.to_string())
-        };
-    }
+        ("PONG".into(), addr)
+    });
+    tokio::run({
+        sink.send_all(stream)
+            .map(|_| ())
+            .map_err(|e| println!("error = {:?}", e))
+    });
+//
+//    loop {
+//        let (_amt, src) = match socket.recv_from(&mut buf) {
+//            Ok(a) => a,
+//            Err(e) => {
+//                warn!("socket recv_from error: {}", e.to_string());
+//                continue;
+//            }
+//        };
+//
+//        // 向第三方 DNS 服务器发送查询请求
+//        let resp_buf = match dns_search(&src, &configs, &buf) {
+//            Ok(b) => b,
+//            Err(e) => {
+//                warn!("dns_search error: {}", e);
+//                continue;
+//            }
+//        };
+//        // 将第三方的请求结果返回给请求者
+//        let _ = match socket.send_to(&resp_buf, src) {
+//            Ok(_) => debug!("dns message send success: src: {}", src),
+//            Err(e) => warn!("socket send_to error: {}", e.to_string())
+//        };
+//    }
 }
 
-fn dns_search(source_address: &SocketAddr, configs: &Vec<Config>, buf: &[u8]) -> Result<Vec<u8>, String> {
+fn dns_search(source_address: &SocketAddr, buf: &[u8]) -> Result<Vec<u8>, String> {
     let message = match Message::from_vec(&buf) {
         Ok(m) => m,
         Err(e) => return Err(e.to_string())
@@ -49,17 +76,33 @@ fn dns_search(source_address: &SocketAddr, configs: &Vec<Config>, buf: &[u8]) ->
     }
     let query = &message.queries()[0];
     // 根据规则获取查询 DNS 服务器地址
-    let dns_server_address = remote_dns_server_address(&configs, &query)?;
+    let dns_server_address = remote_dns_server_address(&query)?;
 
-    let mut resp_message = do_search(query, dns_server_address)?;
+    let mut resp_message = match query.query_type() {
+        RecordType::A => do_lookup(query, dns_server_address)?,
+        _ => do_search(query, dns_server_address)?
+    };
     resp_message.set_id(message.id());
     let resp = match resp_message.to_vec() {
         Ok(v) => v,
         Err(e) => return Err(e.to_string())
     };
 
-    info!("source: {}\tdns server: {}\tname: {}", source_address, dns_server_address, query.name());
+    info!("source: {}\t\tdns server: {}\t\tname: {}", source_address, dns_server_address, query.name());
     Ok(resp)
+}
+
+fn do_lookup(query: &Query, dns_server_address: &str) -> Result<Message, String> {
+    let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
+    let response = resolver.lookup(&query.name().to_ascii(), RecordType::A).unwrap();
+    let mut message = Message::new();
+
+    message.add_query(query.clone());
+
+    for record in response.record_iter() {
+        message.add_answer(record.clone());
+    }
+    Ok(message)
 }
 
 fn do_search(query: &Query, dns_server_address: &str) -> Result<Message, String> {
@@ -83,7 +126,7 @@ fn do_search(query: &Query, dns_server_address: &str) -> Result<Message, String>
     Err("Response no message".to_string())
 }
 
-fn remote_dns_server_address<'a>(configs: &'a Vec<Config>, query: &Query) -> Result<&'a str, &'a str> {
-    let config = Config::filter_rule(&configs, &query.name().to_string())?;
-    return Ok(&config.dns);
+fn remote_dns_server_address<'a>(query: &Query) -> Result<&'a str, &'a str> {
+    let config = CONFIGS.filter_rule(&query.name().to_string())?;
+    Ok(&config.dns)
 }
