@@ -10,11 +10,6 @@ use env_logger;
 use log::info;
 
 
-lazy_static! {
-    pub static ref CONFIGS: &'static config::Configs = &config::Configs::load();
-}
-
-
 fn main() {
     env_logger::init();
     info!("server start, pid: {}", process::id());

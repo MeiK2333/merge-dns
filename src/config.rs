@@ -1,9 +1,11 @@
 use serde_json::Value;
 use std::env;
 use std::fs;
+use std::sync::{Mutex, Arc};
 
 use regex::Regex;
 use log::info;
+use serde_json::value::Value::Null;
 
 #[derive(Debug)]
 pub struct Config {
@@ -62,12 +64,12 @@ impl Configs {
         configs
     }
 
-    pub fn filter_rule(self, name: &str) -> Result<Config, &str> {
+    pub fn filter_rule(self, name: &str) -> Result<String, String> {
         for config in self.configs {
             if config.re.is_match(name) {
-                return Ok(config);
+                return Ok(config.dns.clone());
             }
         }
-        Err("rule not found!")
+        Err("rule not found!".to_string())
     }
 }

@@ -1,5 +1,4 @@
 use crate::config::{Configs, Config};
-use crate::CONFIGS;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use trust_dns::client::{Client, SyncClient};
@@ -23,7 +22,7 @@ pub fn server() {
     let socket = UdpSocket::bind(&addr).unwrap();
     let (sink, stream) = UdpFramed::new(socket, BytesCodec::new()).split();
 
-    let stream = stream.map(|(msg, addr)| {
+    let stream = stream.map(move |(msg, addr)| {
         let resp_buf = match dns_search(&addr, &msg) {
             Ok(b) => b,
             Err(e) => {
@@ -79,8 +78,8 @@ fn dns_search(source_address: &SocketAddr, buf: &[u8]) -> Result<Vec<u8>, String
     let dns_server_address = remote_dns_server_address(&query)?;
 
     let mut resp_message = match query.query_type() {
-        RecordType::A => do_lookup(query, dns_server_address)?,
-        _ => do_search(query, dns_server_address)?
+        RecordType::A => do_lookup(query)?,
+        _ => do_search(query, dns_server_address.as_str())?
     };
     resp_message.set_id(message.id());
     let resp = match resp_message.to_vec() {
@@ -92,9 +91,15 @@ fn dns_search(source_address: &SocketAddr, buf: &[u8]) -> Result<Vec<u8>, String
     Ok(resp)
 }
 
-fn do_lookup(query: &Query, dns_server_address: &str) -> Result<Message, String> {
-    let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
-    let response = resolver.lookup(&query.name().to_ascii(), RecordType::A).unwrap();
+fn do_lookup(query: &Query) -> Result<Message, String> {
+    let resolver = match Resolver::new(ResolverConfig::default(), ResolverOpts::default()) {
+        Ok(r) => r,
+        Err(e) => return Err(e.to_string())
+    };
+    let response = match resolver.lookup(&query.name().to_ascii(), RecordType::A) {
+        Ok(r) => r,
+        Err(e) => return Err(e.to_string())
+    };
     let mut message = Message::new();
 
     message.add_query(query.clone());
@@ -126,7 +131,8 @@ fn do_search(query: &Query, dns_server_address: &str) -> Result<Message, String>
     Err("Response no message".to_string())
 }
 
-fn remote_dns_server_address<'a>(query: &Query) -> Result<&'a str, &'a str> {
-    let config = CONFIGS.filter_rule(&query.name().to_string())?;
-    Ok(&config.dns)
+fn remote_dns_server_address(query: &Query) -> Result<String, String> {
+    let configs = Configs::load();
+    let config = configs.filter_rule(&query.name().to_string())?;
+    Ok(config)
 }
